@@ -86,6 +86,11 @@ When you use bash commands or tools, always summarize what you did and what you 
     "safe_mode": True,  # Restricts certain dangerous operations
     "working_directory": os.path.expanduser("~/ollamacode_workspace"),
     "allowed_tools": ["file_read", "file_write", "file_list", "web_get", "sys_info", "python_run"],
+    # New configuration options for code handling
+    "auto_extract_code": False,  # Whether to automatically extract code blocks
+    "auto_save_code": False,     # Whether to save extracted code to files
+    "auto_run_python": False,    # Whether to automatically run Python code
+    "code_directory": "",        # Subdirectory for saved code (empty = working_directory)
 }
 
 class ToolsFramework:
@@ -640,6 +645,101 @@ class OllamaCode:
         matches = re.findall(pattern, text)
         return [(lang.strip() if lang.strip() else "txt", code.strip()) for lang, code in matches]
     
+    def generate_filename(self, code: str, language: str) -> str:
+        """Generate a meaningful filename based on code content"""
+        # Try to extract a name from first line comment
+        first_line = code.strip().split('\n')[0]
+        name_match = re.search(r'#\s*([\w\s]+)\.?', first_line)
+        
+        if name_match:
+            name = re.sub(r'\W+', '_', name_match.group(1).lower().strip())
+        else:
+            # Use a timestamp and language as fallback
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            name = f"code_{timestamp}"
+        
+        # Map language to file extension
+        extension_map = {
+            "python": ".py", "py": ".py", 
+            "javascript": ".js", "js": ".js",
+            "typescript": ".ts", "ts": ".ts",
+            "html": ".html",
+            "css": ".css",
+            "c": ".c",
+            "cpp": ".cpp", "c++": ".cpp",
+            "java": ".java",
+            "rust": ".rs",
+            "go": ".go",
+            "ruby": ".rb",
+            "php": ".php",
+            "bash": ".sh", "shell": ".sh", "sh": ".sh",
+            "sql": ".sql",
+            "json": ".json",
+            "xml": ".xml",
+            "yaml": ".yml", "yml": ".yml",
+            "markdown": ".md", "md": ".md",
+            "txt": ".txt",
+        }
+        ext = extension_map.get(language.lower(), ".txt")
+        
+        return f"{name}{ext}"
+    
+    def execute_python_code(self, code: str, env_vars: Dict[str, str] = None) -> Tuple[bool, str]:
+        """Execute Python code with improved environment and error handling"""
+        # Create a temporary file
+        fd, path = tempfile.mkstemp(suffix=".py")
+        with os.fdopen(fd, 'w') as f:
+            f.write(code)
+        
+        try:
+            # Find Python executable
+            python_exec = find_executable("python3") or find_executable("python")
+            if not python_exec:
+                return False, "Python executable not found."
+            
+            # Set up environment
+            env = os.environ.copy()
+            if env_vars:
+                env.update(env_vars)
+            
+            # Execute with proper error handling
+            process = subprocess.Popen(
+                [python_exec, path],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                cwd=str(self.tools.working_dir)
+            )
+            
+            stdout, stderr = process.communicate(timeout=15)
+            
+            if process.returncode == 0:
+                return True, stdout
+            else:
+                # Format error message for better readability
+                error_msg = f"Execution failed (code {process.returncode}):\n"
+                if stderr:
+                    error_lines = stderr.strip().split('\n')
+                    for line in error_lines:
+                        # Highlight error location if possible
+                        if "File " in line and ", line " in line:
+                            error_msg += f"{Colors.RED}{line}{Colors.ENDC}\n"
+                        else:
+                            error_msg += f"{line}\n"
+                return False, error_msg
+                
+        except subprocess.TimeoutExpired:
+            return False, "Execution timed out after 15 seconds."
+        except Exception as e:
+            return False, f"Error executing code: {str(e)}"
+        finally:
+            # Clean up
+            try:
+                os.unlink(path)
+            except:
+                pass
+    
     def process_bash_and_tools(self, response_text: str) -> Tuple[str, List[Dict[str, Any]]]:
         """Process bash commands and tool calls in the response"""
         processed_results = []
@@ -719,6 +819,51 @@ class OllamaCode:
                     "params": params,
                     "result": result
                 })
+        
+        # Add automatic code extraction and handling
+        if self.config.get("auto_extract_code", False):
+            code_blocks = self.extract_code_blocks(response_text)
+            for lang, code in code_blocks:
+                # Skip bash blocks (already handled above) and tool blocks
+                if lang.lower() in ["bash", "shell", "sh", "tool"]:
+                    continue
+                    
+                # Handle Python code specially
+                if lang.lower() in ["python", "py"] and self.config.get("auto_run_python", False):
+                    print(f"\n{Colors.YELLOW}Auto-executing Python code...{Colors.ENDC}")
+                    success, result = self.execute_python_code(code)
+                    
+                    # Show execution results
+                    if success:
+                        print(f"{Colors.GREEN}Execution successful:{Colors.ENDC}")
+                        print(result)
+                    else:
+                        print(f"{Colors.RED}Execution failed:{Colors.ENDC}")
+                        print(result)
+                
+                # Save code to a permanent file in working directory
+                if self.config.get("auto_save_code", False):
+                    # Get the directory for saving code
+                    code_dir = self.config.get("code_directory", "")
+                    if code_dir:
+                        save_dir = os.path.join(self.tools.working_dir, code_dir)
+                        os.makedirs(save_dir, exist_ok=True)
+                    else:
+                        save_dir = self.tools.working_dir
+                    
+                    # Generate a filename based on first line comment or code content
+                    filename = self.generate_filename(code, lang)
+                    save_path = os.path.join(save_dir, filename)
+                    
+                    with open(save_path, 'w') as f:
+                        f.write(code)
+                    print(f"{Colors.GREEN}Code saved to {save_path}{Colors.ENDC}")
+                    
+                    processed_results.append({
+                        "type": "code_saved",
+                        "language": lang,
+                        "path": save_path
+                    })
         
         return response_text, processed_results
     
@@ -888,6 +1033,10 @@ class OllamaCode:
                         followup += f"**Result:**\n```json\n{json.dumps(result_copy, indent=2)}\n```\n\n"
                 else:
                     followup += f"Tool execution failed with error: {tool_result.get('error', 'Unknown error')}\n\n"
+            
+            elif result["type"] == "code_saved":
+                followup += f"## Code Saved: `{os.path.basename(result['path'])}`\n\n"
+                followup += f"A {result['language']} code file was saved to: {result['path']}\n\n"
         
         followup += "Please continue based on these results. What would you like to do next?\n"
         return followup
@@ -1148,6 +1297,9 @@ def show_help():
     print(f"  {Colors.YELLOW}/toggle_bash{Colors.ENDC}      Enable/disable bash execution")
     print(f"  {Colors.YELLOW}/toggle_tools{Colors.ENDC}     Enable/disable tools")
     print(f"  {Colors.YELLOW}/toggle_safe{Colors.ENDC}      Enable/disable safe mode")
+    print(f"  {Colors.YELLOW}/toggle_auto_save{Colors.ENDC} Enable/disable automatic code saving")
+    print(f"  {Colors.YELLOW}/toggle_auto_run{Colors.ENDC}  Enable/disable automatic Python execution")
+    print(f"  {Colors.YELLOW}/list_code{Colors.ENDC}        List saved code files")
     print(f"  {Colors.YELLOW}/workspace{Colors.ENDC}        Show working directory")
     print()
 
@@ -1158,31 +1310,35 @@ def list_tools(config: Dict[str, Any]):
     tools_enabled = config.get("enable_tools", True)
     bash_enabled = config.get("enable_bash", True)
     safe_mode = config.get("safe_mode", True)
+    auto_save = config.get("auto_save_code", False)
+    auto_run = config.get("auto_run_python", False)
     
     print(f"\n{Colors.BOLD}Status:{Colors.ENDC}")
     print(f"  Tools enabled: {Colors.GREEN if tools_enabled else Colors.RED}{tools_enabled}{Colors.ENDC}")
     print(f"  Bash enabled: {Colors.GREEN if bash_enabled else Colors.RED}{bash_enabled}{Colors.ENDC}")
     print(f"  Safe mode: {Colors.GREEN if safe_mode else Colors.RED}{safe_mode}{Colors.ENDC}")
+    print(f"  Auto-save code: {Colors.GREEN if auto_save else Colors.RED}{auto_save}{Colors.ENDC}")
+    print(f"  Auto-run Python: {Colors.GREEN if auto_run else Colors.RED}{auto_run}{Colors.ENDC}")
     
     if tools_enabled:
         print(f"\n{Colors.BOLD}Available Tools:{Colors.ENDC}")
         print(f"  {Colors.YELLOW}file_read{Colors.ENDC}      - Read a file's contents")
-        print(f"    params: {'{\"path\": \"path/to/file\"}'}")
+        print(f"    params: " + '{"path": "path/to/file"}')
         
         print(f"  {Colors.YELLOW}file_write{Colors.ENDC}     - Write content to a file")
-        print(f"    params: {'{\"path\": \"path/to/file\", \"content\": \"content to write\"}'}")
+        print(f"    params: " + '{"path": "path/to/file", "content": "content to write"}')
         
         print(f"  {Colors.YELLOW}file_list{Colors.ENDC}      - List files in a directory")
-        print(f"    params: {'{\"directory\": \"path/to/directory\"}'}")
+        print(f"    params: " + '{"directory": "path/to/directory"}')
         
         print(f"  {Colors.YELLOW}web_get{Colors.ENDC}        - Make an HTTP GET request")
-        print(f"    params: {'{\"url\": \"https://example.com\"}'}")
+        print(f"    params: " + '{"url": "https://example.com"}')
         
         print(f"  {Colors.YELLOW}sys_info{Colors.ENDC}       - Get system information")
-        print(f"    params: {'{}'}")
+        print(f"    params: " + '{}')
         
         print(f"  {Colors.YELLOW}python_run{Colors.ENDC}     - Execute a Python script")
-        print(f"    params: {{\"path\": \"path/to/script.py\"}} or {{\"code\": \"print('Hello')\"}}") 
+        print(f"    params: " + '{"path": "path/to/script.py"}' + " or " + '{"code": "print(\'Hello\')"}')
     
     if bash_enabled:
         print(f"\n{Colors.BOLD}Bash Commands:{Colors.ENDC}")
@@ -1208,6 +1364,10 @@ def main():
     parser.add_argument("--disable-tools", action="store_true", help="Disable tools")
     parser.add_argument("--unsafe", action="store_true", help="Disable safety restrictions")
     parser.add_argument("--workspace", help="Set the working directory for bash and tools")
+    # New command line arguments
+    parser.add_argument("--auto-save", action="store_true", help="Automatically save code to files")
+    parser.add_argument("--auto-run", action="store_true", help="Automatically run Python code")
+    parser.add_argument("--code-dir", help="Subdirectory for saved code")
     
     args = parser.parse_args()
     
@@ -1233,6 +1393,15 @@ def main():
         config["safe_mode"] = False
     if args.workspace:
         config["working_directory"] = os.path.abspath(args.workspace)
+    # Handle new command line arguments
+    if args.auto_save:
+        config["auto_extract_code"] = True
+        config["auto_save_code"] = True
+    if args.auto_run:
+        config["auto_extract_code"] = True
+        config["auto_run_python"] = True
+    if args.code_dir:
+        config["code_directory"] = args.code_dir
     
     # Initialize client
     client = OllamaCode(config)
@@ -1261,6 +1430,8 @@ def main():
     print(f"Bash commands: {Colors.GREEN if config.get('enable_bash', True) else Colors.RED}{'Enabled' if config.get('enable_bash', True) else 'Disabled'}{Colors.ENDC}")
     print(f"Tools: {Colors.GREEN if config.get('enable_tools', True) else Colors.RED}{'Enabled' if config.get('enable_tools', True) else 'Disabled'}{Colors.ENDC}")
     print(f"Safe mode: {Colors.GREEN if config.get('safe_mode', True) else Colors.RED}{'Enabled' if config.get('safe_mode', True) else 'Disabled'}{Colors.ENDC}")
+    print(f"Auto-save code: {Colors.GREEN if config.get('auto_save_code', False) else Colors.RED}{'Enabled' if config.get('auto_save_code', False) else 'Disabled'}{Colors.ENDC}")
+    print(f"Auto-run Python: {Colors.GREEN if config.get('auto_run_python', False) else Colors.RED}{'Enabled' if config.get('auto_run_python', False) else 'Disabled'}{Colors.ENDC}")
     print(f"Working directory: {config.get('working_directory')}")
     print(f"Type {Colors.YELLOW}/help{Colors.ENDC} for available commands or {Colors.YELLOW}/quit{Colors.ENDC} to exit")
     
@@ -1402,6 +1573,43 @@ def main():
                 print(f"{Colors.GREEN if config['safe_mode'] else Colors.YELLOW}Safe mode {status}.{Colors.ENDC}")
                 if not config["safe_mode"]:
                     print(f"{Colors.YELLOW}Warning: Disabling safe mode removes security restrictions.{Colors.ENDC}")
+                continue
+            elif prompt.strip() == "/toggle_auto_save":
+                config["auto_save_code"] = not config.get("auto_save_code", False)
+                config["auto_extract_code"] = config["auto_save_code"] or config.get("auto_run_python", False)
+                save_config(config)
+                status = "enabled" if config["auto_save_code"] else "disabled"
+                print(f"{Colors.GREEN}Auto-save code {status}.{Colors.ENDC}")
+                continue
+            elif prompt.strip() == "/toggle_auto_run":
+                config["auto_run_python"] = not config.get("auto_run_python", False)
+                config["auto_extract_code"] = config["auto_run_python"] or config.get("auto_save_code", False)
+                save_config(config)
+                status = "enabled" if config["auto_run_python"] else "disabled"
+                print(f"{Colors.GREEN}Auto-run Python code {status}.{Colors.ENDC}")
+                continue
+            elif prompt.strip() == "/list_code":
+                code_dir = config.get("code_directory", "")
+                if code_dir:
+                    dir_path = os.path.join(client.tools.working_dir, code_dir)
+                else:
+                    dir_path = client.tools.working_dir
+                
+                try:
+                    files = [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
+                    if files:
+                        print(f"{Colors.BOLD}Saved code files in {dir_path}:{Colors.ENDC}")
+                        for file in sorted(files):
+                            ext = os.path.splitext(file)[1].lower()
+                            # Highlight code files with color based on extension
+                            if ext in ['.py', '.js', '.ts', '.html', '.css', '.c', '.cpp', '.java', '.go', '.rs']:
+                                print(f"  {Colors.CYAN}{file}{Colors.ENDC}")
+                            else:
+                                print(f"  {file}")
+                    else:
+                        print(f"{Colors.YELLOW}No code files found in {dir_path}{Colors.ENDC}")
+                except Exception as e:
+                    print(f"{Colors.RED}Error listing files: {e}{Colors.ENDC}")
                 continue
             elif prompt.strip() == "/workspace":
                 workspace = config.get("working_directory")
