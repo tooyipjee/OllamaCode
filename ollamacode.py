@@ -37,62 +37,6 @@ class Colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-# Default configuration
-DEFAULT_CONFIG = {
-    "ollama_endpoint": "http://localhost:11434",
-    "model": "mistral-nemo:latest",
-    "context_window": 8000,
-    "temperature": 0.7,
-    "max_tokens": 4000,
-    "history_file": os.path.expanduser("~/.ollamacode_history"),
-    "system_prompt": """You are OllamaCode, a coding and shell assistant that can use tools to help with tasks.
-You can execute bash commands, create scripts, run scripts and use tools to perform various operations.
-
-To execute a bash command, use:
-```bash
-<command>
-```
-
-To use a tool, use the following format:
-```tool
-{
-  "tool": "tool_name",
-  "params": {
-    "param1": "value1",
-    "param2": "value2"
-  }
-}
-```
-
-Available tools:
-- file_read: Read a file's contents
-  - params: {"path": "path/to/file"}
-- file_write: Write content to a file
-  - params: {"path": "path/to/file", "content": "content to write"}
-- file_list: List files in a directory
-  - params: {"directory": "path/to/directory"}
-- web_get: Make an HTTP GET request
-  - params: {"url": "https://example.com"}
-- sys_info: Get system information
-  - params: {}
-- python_run: Execute a Python script
-  - params: {"path": "path/to/script.py"} or {"code": "print('Hello World')"}
-
-Always provide well-commented, efficient code solutions and explain your approach.
-When you use bash commands or tools, always summarize what you did and what you found.
-""",
-    "enable_bash": True,
-    "enable_tools": True,
-    "safe_mode": True,  # Restricts certain dangerous operations
-    "working_directory": os.path.expanduser("~/ollamacode_workspace"),
-    "allowed_tools": ["file_read", "file_write", "file_list", "web_get", "sys_info", "python_run"],
-    # New configuration options for code handling
-    "auto_extract_code": False,  # Whether to automatically extract code blocks
-    "auto_save_code": False,     # Whether to save extracted code to files
-    "auto_run_python": False,    # Whether to automatically run Python code
-    "code_directory": "",        # Subdirectory for saved code (empty = working_directory)
-}
-
 class ToolsFramework:
     """Framework for executing tools requested by the LLM"""
     
@@ -1184,18 +1128,42 @@ class OllamaCode:
         return path
 
 def load_config() -> Dict[str, Any]:
-    """Load configuration from config file or use defaults"""
-    config_path = os.path.expanduser("~/.config/ollamacode/config.json")
-    config = DEFAULT_CONFIG.copy()
+    """Load configuration from config files"""
+    # Define paths for default and user config
+    default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    user_config_path = os.path.expanduser("~/.config/ollamacode/config.json")
     
-    if os.path.exists(config_path):
+    # Initialize with empty config
+    config = {}
+    
+    # Load default config
+    try:
+        if os.path.exists(default_config_path):
+            with open(default_config_path, 'r') as f:
+                config.update(json.load(f))
+        else:
+            print(f"{Colors.YELLOW}Warning: Default config file not found at {default_config_path}{Colors.ENDC}")
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"{Colors.YELLOW}Warning: Could not load default config file: {e}{Colors.ENDC}")
+    
+    # Override with user config if it exists
+    if os.path.exists(user_config_path):
         try:
-            with open(config_path, 'r') as f:
+            with open(user_config_path, 'r') as f:
                 user_config = json.load(f)
                 config.update(user_config)
         except (json.JSONDecodeError, IOError) as e:
-            print(f"{Colors.YELLOW}Warning: Could not load config file: {e}{Colors.ENDC}")
-            print(f"Using default configuration.")
+            print(f"{Colors.YELLOW}Warning: Could not load user config file: {e}{Colors.ENDC}")
+    
+    # Expand paths in config
+    for key in ["history_file", "working_directory"]:
+        if key in config and isinstance(config[key], str):
+            config[key] = os.path.expanduser(config[key])
+    
+    # Check if config is empty (no files were loaded successfully)
+    if not config:
+        print(f"{Colors.RED}Error: Could not load any configuration. Please ensure config.json exists.{Colors.ENDC}")
+        sys.exit(1)
     
     return config
 
