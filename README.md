@@ -344,7 +344,7 @@ plt.show()
 
 print("Visualization saved as nyc_forecast.png")
 ```
-
+```
 Executing tool: python_run
 Parameters: {"code": "import matplotlib.pyplot as plt..."}
 
@@ -353,7 +353,6 @@ Tool executed successfully
 Output:
 Visualization saved as nyc_forecast.png
 ```
-
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
