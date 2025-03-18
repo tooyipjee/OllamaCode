@@ -349,6 +349,19 @@ class ToolsFramework:
                     f.write(code)
                 
                 script_path = temp_file
+                
+                # Try to check for syntax errors first
+                try:
+                    compile(code, '<string>', 'exec')
+                except SyntaxError as e:
+                    return {
+                        "status": "error",
+                        "error": f"Python syntax error: {str(e)}",
+                        "code": code,
+                        "line": e.lineno if hasattr(e, 'lineno') else None,
+                        "offset": e.offset if hasattr(e, 'offset') else None,
+                        "text": e.text if hasattr(e, 'text') else None
+                    }
             
             # If path is provided, use that file
             elif "path" in params:
@@ -359,6 +372,20 @@ class ToolsFramework:
                 
                 if not script_path.is_file():
                     return {"status": "error", "error": f"Not a file: {script_path}"}
+                
+                # Try to check for syntax errors
+                try:
+                    with open(script_path, 'r') as f:
+                        code = f.read()
+                    compile(code, str(script_path), 'exec')
+                except SyntaxError as e:
+                    return {
+                        "status": "error",
+                        "error": f"Python syntax error in file {script_path}: {str(e)}",
+                        "line": e.lineno if hasattr(e, 'lineno') else None,
+                        "offset": e.offset if hasattr(e, 'offset') else None,
+                        "text": e.text if hasattr(e, 'text') else None
+                    }
             
             # Execute the Python script
             process = subprocess.Popen(
@@ -652,6 +679,20 @@ class OllamaCode:
                 print(f"\n{Colors.YELLOW}Executing tool:{Colors.ENDC} {tool_name}")
                 print(f"Parameters: {json.dumps(params, indent=2)}")
                 
+                # Special handling for python_run tool with code parameter
+                if tool_name == "python_run" and "code" in params:
+                    code = params["code"]
+                    # Fix common syntax issues that models might introduce
+                    fixed_code = code
+                    # Replace common errors with correct Python syntax
+                    fixed_code = re.sub(r'for \* in', 'for _ in', fixed_code)  # Fix asterisk in for loop
+                    fixed_code = re.sub(r'([a-zA-Z0-9_]+)\*([a-zA-Z0-9_]+)', r'\1_\2', fixed_code)  # Fix variable names with asterisks
+                    
+                    # Check if code was modified
+                    if fixed_code != code:
+                        print(f"{Colors.YELLOW}Fixed potential syntax issues in Python code{Colors.ENDC}")
+                        params["code"] = fixed_code
+                
                 result = self.tools.execute_tool(tool_name, params)
                 self.last_tool_result = result
                 
@@ -809,13 +850,30 @@ class OllamaCode:
                             else:
                                 followup += "Script executed without producing any output.\n\n"
                         else:
-                            followup += f"Execution failed with error code: {tool_result.get('returncode', 'Unknown')}\n\n"
-                            
-                            if tool_result.get("stderr"):
-                                followup += f"**Error:**\n```\n{tool_result['stderr']}\n```\n\n"
-                            
-                            if tool_result.get("stdout"):
-                                followup += f"**Output before error:**\n```\n{tool_result['stdout']}\n```\n\n"
+                            # Handle specific Python syntax errors
+                            if "Python syntax error" in tool_result.get("error", ""):
+                                followup += f"**Syntax Error:**\n{tool_result.get('error')}\n\n"
+                                
+                                # Add more detailed syntax error information if available
+                                if tool_result.get("line") and tool_result.get("text"):
+                                    followup += f"Line {tool_result.get('line')}: `{tool_result.get('text')}`\n"
+                                    if tool_result.get("offset"):
+                                        # Create a pointer to the error position
+                                        pointer = " " * (tool_result.get("offset") - 1) + "^"
+                                        followup += f"`{pointer}`\n\n"
+                                
+                                # If code is provided directly, show it for context
+                                if tool_result.get("code"):
+                                    followup += f"**Code with error:**\n```python\n{tool_result['code']}\n```\n\n"
+                            else:
+                                # Regular runtime errors
+                                followup += f"Execution failed with error code: {tool_result.get('returncode', 'Unknown')}\n\n"
+                                
+                                if tool_result.get("stderr"):
+                                    followup += f"**Error:**\n```\n{tool_result['stderr']}\n```\n\n"
+                                
+                                if tool_result.get("stdout"):
+                                    followup += f"**Output before error:**\n```\n{tool_result['stdout']}\n```\n\n"
                     
                     else:
                         # Generic formatting for other tool results
@@ -1124,7 +1182,7 @@ def list_tools(config: Dict[str, Any]):
         print(f"    params: {'{}'}")
         
         print(f"  {Colors.YELLOW}python_run{Colors.ENDC}     - Execute a Python script")
-        print(f"    params: " + r'{"path": "path/to/script.py"}' + " or " + r'{"code": "print(\'Hello\')"}')
+        print(f"    params: {{\"path\": \"path/to/script.py\"}} or {{\"code\": \"print('Hello')\"}}") 
     
     if bash_enabled:
         print(f"\n{Colors.BOLD}Bash Commands:{Colors.ENDC}")
