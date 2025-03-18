@@ -2,8 +2,6 @@
 
 OllamaCode is a powerful command-line tool for delegating coding tasks to local Large Language Models via Ollama. It provides an agent-like experience similar to Claude Code but running on your local machine, with enhanced features like bash integration and a comprehensive tools framework.
 
-![OllamaCode Demo](https://example.com/ollamacode-demo.gif)
-
 ## 🌟 Features
 
 - Interactive chat interface with local LLMs
@@ -14,6 +12,7 @@ OllamaCode is a powerful command-line tool for delegating coding tasks to local 
 - Configuration system with global and user-specific settings
 - Compatible with all Ollama models
 - Safe mode for restricted bash command execution
+- Auto-save and auto-run capabilities for Python code
 
 ## 📋 Table of Contents
 
@@ -89,6 +88,9 @@ User configuration overrides the default settings. You can customize settings vi
 | `safe_mode` | Restrict dangerous operations | true |
 | `auto_save_code` | Automatically save code to files | false |
 | `auto_run_python` | Automatically execute Python code | false |
+| `code_directory` | Subdirectory for saved code | "" |
+| `process_followup_commands` | Process commands in followup responses | true |
+| `max_followup_depth` | Maximum depth for followup responses | 2 |
 
 ## 📖 Usage Guide
 

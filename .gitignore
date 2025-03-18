@@ -1,3 +1,4 @@
 ollamacode_workspace
 .ollamacode_history
 .DS_Store
+ollamacode/__pycache__
