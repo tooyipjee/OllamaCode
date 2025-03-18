@@ -6,11 +6,9 @@ OllamaCode is a powerful command-line tool for delegating coding tasks to local 
 
 - Interactive chat interface with local LLMs
 - Bash command execution directly from the chat
-- Extensible tools framework for file operations, web requests, and code execution
+- Extensible tools framework for file operations, web requests, and code execution (experimental)
 - Automatic code extraction, saving, and execution
-- Context-aware conversation with history management
 - Configuration system with global and user-specific settings
-- Compatible with all Ollama models
 - Safe mode for restricted bash command execution
 - Auto-save and auto-run capabilities for Python code
 
@@ -33,7 +31,7 @@ OllamaCode is a powerful command-line tool for delegating coding tasks to local 
 
 ### Prerequisites
 
-- Python 3.6+
+- Python 3.12+
 - [Ollama](https://ollama.ai/) installed and running locally
 
 ### Install OllamaCode
@@ -49,17 +47,12 @@ cd ollamacode
 pip install -r requirements.txt
 ```
 
-3. Make the script executable:
-```bash
-chmod +x ollamacode.py
-```
-
 ## 🏃‍♂️ Quick Start
 
 1. Ensure Ollama is running on your machine
 2. Run OllamaCode:
 ```bash
-./ollamacode.py
+python ollamacode.py
 ```
 
 3. Start a conversation:
