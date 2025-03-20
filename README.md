@@ -1,4 +1,5 @@
 # OllamaCode
+![OllamaCode Demo](assets/demo.gif)
 
 OllamaCode is a powerful command-line tool for delegating coding tasks to local Large Language Models via Ollama. It provides an agent-like experience similar to Claude Code but running on your local machine, with enhanced features like bash integration and a comprehensive tools framework.
 
