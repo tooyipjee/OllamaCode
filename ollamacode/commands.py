@@ -379,7 +379,44 @@ class WorkspaceCommand(Command):
         except Exception as e:
             print(f"{Colors.RED}Error reading directory: {e}{Colors.ENDC}")
         return True
-
+class ListPluginsCommand(Command):
+    def __init__(self):
+        super().__init__("plugins", "List available tool plugins", ["/plugins"])
+    
+    def execute(self, args: str, client, config: Dict[str, Any]) -> bool:
+        from ..tool_plugins import tool_registry
+        
+        if config.get("disable_plugins", False):
+            print(f"{Colors.YELLOW}Plugins are currently disabled.{Colors.ENDC}")
+            print(f"You can enable plugins by removing the --no-plugins flag or changing your configuration.")
+            return True
+        
+        plugins = tool_registry.get_all_tools()
+        
+        if not plugins:
+            print(f"{Colors.YELLOW}No tool plugins found.{Colors.ENDC}")
+            print(f"You can add plugins by placing them in a plugin directory and using --plugins-dir.")
+            return True
+        
+        print(f"\n{Colors.BOLD}{Colors.HEADER}Available Tool Plugins:{Colors.ENDC}")
+        print(f"Found {len(plugins)} tool plugins:")
+        
+        for plugin in sorted(plugins, key=lambda p: p.name):
+            print(f"  {Colors.YELLOW}{plugin.name}{Colors.ENDC} - {plugin.description}")
+            
+            # Show parameters if any
+            if plugin.parameters:
+                print(f"    Parameters:")
+                for param_name, param_info in plugin.parameters.items():
+                    required = param_info.get("required", False)
+                    required_str = f"{Colors.RED}(required){Colors.ENDC}" if required else "(optional)"
+                    param_type = param_info.get("type", "any")
+                    description = param_info.get("description", "")
+                    print(f"      - {param_name} {required_str}: {description} [type: {param_type}]")
+            
+            print()
+        
+        return True
 
 class CommandRegistry:
     """Registry for CLI commands"""
@@ -410,6 +447,7 @@ class CommandRegistry:
         self.register_command(ToggleAutoRunCommand())
         self.register_command(ListCodeCommand())
         self.register_command(WorkspaceCommand())
+        self.register_command(ListPluginsCommand())
     
     def register_command(self, command: Command):
         """Register a new command"""

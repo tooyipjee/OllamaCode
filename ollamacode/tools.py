@@ -1,7 +1,3 @@
-"""
-Tools framework for OllamaCode.
-"""
-
 import os
 import json
 import subprocess
@@ -11,10 +7,13 @@ import base64
 import datetime
 import tempfile
 import platform
-from typing import Dict, Any, Optional
+import logging
+from typing import Dict, Any, Optional, List, Type
 from pathlib import Path
 
 from .utils import find_executable, Colors
+from .security import SecurityManager
+from .tool_plugins import ToolPlugin, tool_registry
 
 class ToolsFramework:
     """Framework for executing tools requested by the LLM"""

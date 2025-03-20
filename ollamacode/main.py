@@ -36,6 +36,8 @@ def main():
     parser.add_argument("--code-dir", help="Subdirectory for saved code")
     parser.add_argument("--log-level", help="Set logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     parser.add_argument("--log-file", help="Log file path")
+    parser.add_argument("--plugins-dir", help="Directory for tool plugins")
+    parser.add_argument("--no-plugins", action="store_true", help="Disable loading of plugins")
     
     args = parser.parse_args()
     

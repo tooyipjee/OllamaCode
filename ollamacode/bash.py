@@ -1,65 +1,50 @@
 """
-Bash command execution functionality for OllamaCode.
+Bash command execution functionality for OllamaCode with enhanced security.
 """
 
 import os
 import subprocess
 import time
-from typing import Dict, Any
+import logging
+from typing import Dict, Any, Optional
 from pathlib import Path
 
 from .utils import Colors
+from .security import SecurityManager
+
 
 class BashExecutor:
-    """Handles execution of bash commands"""
+    """Handles execution of bash commands with enhanced security"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
         self.config = config
+        self.logger = logger or logging.getLogger(__name__)
         self.working_dir = Path(config.get("working_directory", os.path.expanduser("~/ollamacode_workspace")))
         self.ensure_working_dir()
         
-        # Commands that are never allowed
-        self.blacklisted_commands = [
-            "rm -rf /", "rm -rf /*", "mkfs", "dd if=/dev/zero", 
-            ":(){:|:&};:", "echo > /dev/sda", "mv /* /dev/null"
-        ]
-        
+        # Initialize security manager
+        self.security = SecurityManager(config, logger)
+    
     def ensure_working_dir(self):
         """Ensure the working directory exists"""
         if not self.working_dir.exists():
             self.working_dir.mkdir(parents=True)
-    
-    def is_command_safe(self, command: str) -> bool:
-        """Check if a command is safe to execute"""
-        if not self.config.get("enable_bash", True):
-            return False
-            
-        # Skip safety checks if safe mode is disabled
-        if not self.config.get("safe_mode", True):
-            return True
-            
-        # Check against blacklisted commands
-        command_lower = command.lower()
-        for blacklisted in self.blacklisted_commands:
-            if blacklisted in command_lower:
-                return False
-                
-        # Additional safety checks
-        if "sudo" in command_lower or "su " in command_lower:
-            return False
-            
-        # More complex safety checks could be added here
-        return True
+            self.logger.info(f"Created working directory: {self.working_dir}")
     
     def execute_command(self, command: str) -> Dict[str, Any]:
         """Execute a bash command and return the result"""
-        if not self.is_command_safe(command):
+        # Check if command is safe to execute
+        is_safe, reason = self.security.is_command_safe(command)
+        if not is_safe:
+            self.logger.warning(f"Command rejected: {command} - Reason: {reason}")
             return {
                 "status": "error",
-                "error": "Command not allowed for security reasons."
+                "error": f"Command not allowed: {reason}"
             }
             
         try:
+            self.logger.info(f"Executing command: {command}")
+            
             # Execute the command
             process = subprocess.Popen(
                 command, 
@@ -81,6 +66,7 @@ class BashExecutor:
                 # Check if we've exceeded max execution time
                 if time.time() - start_time > max_execution_time:
                     process.terminate()
+                    self.logger.warning(f"Command timed out after {max_execution_time} seconds: {command}")
                     return {
                         "status": "error",
                         "error": f"Command execution timed out after {max_execution_time} seconds."
@@ -100,7 +86,7 @@ class BashExecutor:
             if len(stderr) > max_output_size:
                 stderr = stderr[:max_output_size] + f"\n... (error output truncated, total size: {len(stderr)} bytes)"
             
-            return {
+            result = {
                 "status": "success" if process.returncode == 0 else "error",
                 "command": command,
                 "return_code": process.returncode,
@@ -108,7 +94,15 @@ class BashExecutor:
                 "stderr": stderr
             }
             
+            if process.returncode != 0:
+                self.logger.warning(f"Command failed with return code {process.returncode}: {command}")
+            else:
+                self.logger.info(f"Command executed successfully: {command}")
+                
+            return result
+            
         except Exception as e:
+            self.logger.error(f"Error executing command: {command} - {str(e)}")
             return {
                 "status": "error",
                 "error": f"Error executing command: {str(e)}"
