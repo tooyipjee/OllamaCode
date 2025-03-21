@@ -22,6 +22,7 @@ class ToolsFramework:
         self.config = config
         self.working_dir = Path(config.get("working_directory", os.path.expanduser("~/ollamacode_workspace")))
         self.ensure_working_dir()
+        self.logger = logging.getLogger(__name__)
         
     def ensure_working_dir(self):
         """Ensure the working directory exists"""
@@ -35,6 +36,26 @@ class ToolsFramework:
                 "status": "error",
                 "error": f"Tool '{tool_name}' is not allowed or does not exist."
             }
+        
+        # Check if the tool exists in the registry
+        tool_plugin = tool_registry.get_tool(tool_name)
+        if tool_plugin:
+            # Use the plugin if it exists
+            try:
+                tool = tool_plugin()
+                errors = tool.validate_params(params)
+                if errors:
+                    return {
+                        "status": "error",
+                        "error": "; ".join(errors)
+                    }
+                return tool.execute(params, self.working_dir, self.config.get("safe_mode", True))
+            except Exception as e:
+                self.logger.error(f"Error executing plugin tool '{tool_name}': {str(e)}")
+                return {
+                    "status": "error",
+                    "error": f"Error executing tool '{tool_name}': {str(e)}"
+                }
         
         # Map tool names to handler methods
         tool_handlers = {
@@ -56,6 +77,7 @@ class ToolsFramework:
         try:
             return tool_handlers[tool_name](params)
         except Exception as e:
+            self.logger.error(f"Error executing built-in tool '{tool_name}': {str(e)}")
             return {
                 "status": "error",
                 "error": f"Error executing tool '{tool_name}': {str(e)}"
@@ -181,6 +203,15 @@ class ToolsFramework:
             # Basic URL validation
             if not url.startswith(("http://", "https://")):
                 return {"status": "error", "error": "URL must start with http:// or https://"}
+            
+            # Create a temporary security manager for URL validation
+            config = {"safe_mode": self.config.get("safe_mode", True), "working_directory": str(self.working_dir)}
+            security = SecurityManager(config)
+            
+            # Check if the URL is safe
+            is_safe, reason = security.safe_web_request(url)
+            if not is_safe:
+                return {"status": "error", "error": reason}
             
             # Make the request
             headers = {'User-Agent': 'OllamaCode/1.0'}
