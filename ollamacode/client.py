@@ -12,9 +12,11 @@ import logging
 
 from .conversation import ConversationHistory
 from .response_processor import ResponseProcessor
+from .function_calling_processor import FunctionCallingProcessor
 from .utils import Colors, save_code_to_file
 from .tools import ToolsFramework
 from .bash import BashExecutor
+from .function_tools import FunctionTools
 
 
 class OllamaClient:
@@ -27,7 +29,7 @@ class OllamaClient:
         
         # Initialize conversation history
         self.conversation = ConversationHistory(
-            max_tokens=self.config.get("context_window", 16000),
+            max_tokens=self.config.get("context_window", 128000),
             system_prompt=self.config.get("system_prompt", "")
         )
         
@@ -35,8 +37,12 @@ class OllamaClient:
         self.tools = ToolsFramework(config)
         self.bash = BashExecutor(config)
         
-        # Initialize response processor
+        # Initialize function tools
+        self.function_tools = FunctionTools(self.tools, config, self.logger)
+        
+        # Initialize processors
         self.processor = ResponseProcessor(config, self.bash, self.tools)
+        self.function_processor = FunctionCallingProcessor(self.function_tools, config, self.logger)
         
         # Last response tracking
         self.last_response = ""
@@ -150,7 +156,10 @@ class OllamaClient:
             
             # Only print prefix for main responses and first-level followups
             if not is_followup or followup_depth <= 1:
-                print(f"\n{Colors.CYAN}OllamaCode:{Colors.ENDC} ", end="", flush=True)
+                if self.config.get("claude_code_style", True):
+                    print(f"\n{Colors.CYAN}Claude:{Colors.ENDC} ", end="", flush=True)
+                else:
+                    print(f"\n{Colors.CYAN}OllamaCode:{Colors.ENDC} ", end="", flush=True)
             
             for line in response.iter_lines():
                 if line:
@@ -193,15 +202,28 @@ class OllamaClient:
                     self.logger.info(f"Processing commands in followup response (depth: {followup_depth})")
                     print(f"\n{Colors.YELLOW}Processing commands in followup response (depth: {followup_depth})...{Colors.ENDC}")
                 
-                # Process the response using the ResponseProcessor
-                response_text, processed_results = self.processor.process_response(full_response)
+                # Process the response using the function calling processor by default
+                if self.config.get("use_function_calling", True):
+                    response_text, function_results = self.function_processor.process_function_calls(full_response)
+                    processed_results = function_results
+                    
+                    # If no function calls were found, fall back to standard processing
+                    if not function_results and self.config.get("fallback_to_legacy", True):
+                        self.logger.info("No function calls found, falling back to legacy processing")
+                        _, processed_results = self.processor.process_response(full_response)
+                else:
+                    # Use only the standard processor
+                    response_text, processed_results = self.processor.process_response(full_response)
                 
                 # If we have results to share, send a followup prompt
                 if processed_results:
-                    print(f"\n{Colors.YELLOW}Sharing command/tool results with the model...{Colors.ENDC}")
+                    print(f"\n{Colors.YELLOW}Sharing results with the model...{Colors.ENDC}")
                     
-                    # Generate the followup prompt
-                    followup_prompt = self.processor.format_results_for_followup(processed_results)
+                    # Generate the followup prompt based on the processor used
+                    if self.config.get("use_function_calling", True) and isinstance(processed_results, list) and len(processed_results) > 0 and isinstance(processed_results[0], dict) and "function_call" in processed_results[0]:
+                        followup_prompt = self.function_processor.format_results_for_followup(processed_results)
+                    else:
+                        followup_prompt = self.processor.format_results_for_followup(processed_results)
                     
                     if followup_prompt:
                         # Increment the depth for the next followup

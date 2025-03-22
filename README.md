@@ -1,17 +1,21 @@
 # OllamaCode
 ![OllamaCode Demo](assets/demo.gif)
 
-OllamaCode is a powerful command-line tool for delegating coding tasks to local Large Language Models via Ollama. It provides an agent-like experience similar to Claude Code but running on your local machine, with enhanced features like bash integration and a comprehensive tools framework.
+OllamaCode is a powerful command-line tool for delegating coding tasks to local Large Language Models via Ollama. It now provides a true Claude Code-like experience with local Ollama models, featuring a Claude-style UI, function calling format, and a comprehensive tools framework that mirrors Claude Code's capabilities.
 
 ## 🌟 Features
 
-- Interactive chat interface with local LLMs
-- Bash command execution directly from the chat
-- Extensible tools framework for file operations, web requests, and code execution (experimental)
-- Automatic code extraction, saving, and execution
+- True Claude Code-like experience with local Ollama models
+- Claude-style function calling format for tools
+- Comprehensive file operations (read, write, search by glob, grep)
+- Bash command execution with Claude Code-style output
+- Advanced file editing functionality (similar to Claude Code's Edit tool)
+- Batch tool execution for parallel operations
+- Web request capabilities for accessing online resources
+- Python code execution with detailed feedback
 - Configuration system with global and user-specific settings
-- Safe mode for restricted bash command execution
-- Auto-save and auto-run capabilities for Python code
+- Safe mode for restricted operation
+- Automatic prompt loading from external files (Python modules or text)
 
 ## 📋 Table of Contents
 
@@ -75,16 +79,22 @@ User configuration overrides the default settings. You can customize settings vi
 | Setting | Description | Default |
 |---------|-------------|---------|
 | `ollama_endpoint` | Ollama API endpoint | http://localhost:11434 |
-| `model` | Default Ollama model to use | mistral-nemo:latest |
+| `model` | Default Ollama model to use | llama3:latest |
 | `temperature` | Response randomness (0.0-1.0) | 0.7 |
+| `system_prompt_file` | Path to system prompt file | ollamacode/claude_style_system_prompt.py |
 | `enable_bash` | Allow bash command execution | true |
 | `enable_tools` | Allow tools execution | true |
 | `safe_mode` | Restrict dangerous operations | true |
+| `claude_code_style` | Enable Claude Code-style UI | true |
+| `use_function_calling` | Use Claude Code-style function calls | true |
+| `fallback_to_legacy` | Fall back to legacy tool format if no function calls found | true |
+| `replace_function_calls` | Replace function calls in response with results | true |
 | `auto_save_code` | Automatically save code to files | false |
 | `auto_run_python` | Automatically execute Python code | false |
 | `code_directory` | Subdirectory for saved code | "" |
 | `process_followup_commands` | Process commands in followup responses | true |
 | `max_followup_depth` | Maximum depth for followup responses | 2 |
+| `allowed_tools` | List of allowed tools | ["file_read", "file_write", "file_list", "file_search", "file_grep", "edit", "web_get", "sys_info", "python_run", "bash", "batch"] |
 
 ## 📖 Usage Guide
 

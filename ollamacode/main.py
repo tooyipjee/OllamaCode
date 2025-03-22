@@ -115,27 +115,39 @@ def main():
             return
         
         # Print welcome message
-        print(f"\n{Colors.BOLD}{Colors.HEADER}🤖 OllamaCode{Colors.ENDC} - A Claude Code alternative using Ollama")
-        print(f"Using model: {Colors.BOLD}{config['model']}{Colors.ENDC}")
-        print(f"Bash commands: {Colors.GREEN if config.get('enable_bash', True) else Colors.RED}{'Enabled' if config.get('enable_bash', True) else 'Disabled'}{Colors.ENDC}")
-        print(f"Tools: {Colors.GREEN if config.get('enable_tools', True) else Colors.RED}{'Enabled' if config.get('enable_tools', True) else 'Disabled'}{Colors.ENDC}")
-        print(f"Safe mode: {Colors.GREEN if config.get('safe_mode', True) else Colors.RED}{'Enabled' if config.get('safe_mode', True) else 'Disabled'}{Colors.ENDC}")
-        print(f"Auto-save code: {Colors.GREEN if config.get('auto_save_code', False) else Colors.RED}{'Enabled' if config.get('auto_save_code', False) else 'Disabled'}{Colors.ENDC}")
-        print(f"Auto-run Python: {Colors.GREEN if config.get('auto_run_python', False) else Colors.RED}{'Enabled' if config.get('auto_run_python', False) else 'Disabled'}{Colors.ENDC}")
-        print(f"Working directory: {config.get('working_directory')}")
-        print(f"Type {Colors.YELLOW}/help{Colors.ENDC} for available commands or {Colors.YELLOW}/quit{Colors.ENDC} to exit")
+        if config.get("claude_code_style", True):
+            print(f"\n{Colors.BOLD}{Colors.HEADER}🤖 Claude Code{Colors.ENDC} (powered by Ollama)")
+            print(f"Using model: {Colors.BOLD}{config['model']}{Colors.ENDC}")
+            print(f"Working directory: {config.get('working_directory')}")
+            print(f"Type {Colors.YELLOW}/help{Colors.ENDC} for available commands or {Colors.YELLOW}/quit{Colors.ENDC} to exit")
+        else:
+            print(f"\n{Colors.BOLD}{Colors.HEADER}🤖 OllamaCode{Colors.ENDC} - A Claude Code alternative using Ollama")
+            print(f"Using model: {Colors.BOLD}{config['model']}{Colors.ENDC}")
+            print(f"Bash commands: {Colors.GREEN if config.get('enable_bash', True) else Colors.RED}{'Enabled' if config.get('enable_bash', True) else 'Disabled'}{Colors.ENDC}")
+            print(f"Tools: {Colors.GREEN if config.get('enable_tools', True) else Colors.RED}{'Enabled' if config.get('enable_tools', True) else 'Disabled'}{Colors.ENDC}")
+            print(f"Safe mode: {Colors.GREEN if config.get('safe_mode', True) else Colors.RED}{'Enabled' if config.get('safe_mode', True) else 'Disabled'}{Colors.ENDC}")
+            print(f"Auto-save code: {Colors.GREEN if config.get('auto_save_code', False) else Colors.RED}{'Enabled' if config.get('auto_save_code', False) else 'Disabled'}{Colors.ENDC}")
+            print(f"Auto-run Python: {Colors.GREEN if config.get('auto_run_python', False) else Colors.RED}{'Enabled' if config.get('auto_run_python', False) else 'Disabled'}{Colors.ENDC}")
+            print(f"Working directory: {config.get('working_directory')}")
+            print(f"Type {Colors.YELLOW}/help{Colors.ENDC} for available commands or {Colors.YELLOW}/quit{Colors.ENDC} to exit")
         
         # Handle initial prompt if provided
         if args.prompt:
             initial_prompt = " ".join(args.prompt)
-            print(f"\n{Colors.GREEN}You:{Colors.ENDC} {initial_prompt}")
+            if config.get("claude_code_style", True):
+                print(f"\n{Colors.GREEN}Human:{Colors.ENDC} {initial_prompt}")
+            else:
+                print(f"\n{Colors.GREEN}You:{Colors.ENDC} {initial_prompt}")
             client.send_request(initial_prompt)
         
         # Main REPL loop
         while True:
             try:
                 # Get user input
-                prompt = input(f"\n{Colors.GREEN}You:{Colors.ENDC} ")
+                if config.get("claude_code_style", True):
+                    prompt = input(f"\n{Colors.GREEN}Human:{Colors.ENDC} ")
+                else:
+                    prompt = input(f"\n{Colors.GREEN}You:{Colors.ENDC} ")
                 
                 # Handle empty input
                 if prompt.strip() == "":
