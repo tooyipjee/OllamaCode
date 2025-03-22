@@ -253,6 +253,10 @@ class ToolsFramework:
     def sys_info(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Get system information"""
         try:
+            # Check if a specific key was requested
+            requested_key = params.get("key", None)
+            
+            # Build the full system info
             info = {
                 "os": platform.system(),
                 "os_release": platform.release(),
@@ -274,10 +278,24 @@ class ToolsFramework:
             
             info["environment"] = env
             
-            return {
-                "status": "success",
-                "info": info
-            }
+            # If a specific key was requested, return just that piece of information
+            if requested_key and requested_key in info:
+                print(f"\n{Colors.CYAN}System Info:{Colors.ENDC} {requested_key}={info[requested_key]}")
+                return {
+                    "status": "success",
+                    requested_key: info[requested_key]
+                }
+            else:
+                # Print a summary of the system info
+                print(f"\n{Colors.CYAN}System Info Summary:{Colors.ENDC}")
+                print(f"OS: {info['os']} {info['os_release']}")
+                print(f"Python: {info['python_version']}")
+                print(f"Working Directory: {info['working_directory']}")
+                
+                return {
+                    "status": "success",
+                    "info": info
+                }
             
         except Exception as e:
             return {"status": "error", "error": str(e)}

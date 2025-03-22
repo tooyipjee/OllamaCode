@@ -311,14 +311,21 @@ class FunctionTools:
                 return {"status": "error", "error": f"Command execution timed out after {timeout} seconds"}
             
             if process.returncode == 0:
-                return {
+                result = {
                     "status": "success",
                     "command": command,
                     "stdout": stdout,
                     "returncode": process.returncode
                 }
+                
+                # Print output for visibility
+                if stdout:
+                    print(f"\n{Colors.CYAN}Output:{Colors.ENDC}")
+                    print(stdout)
+                
+                return result
             else:
-                return {
+                result = {
                     "status": "error",
                     "command": command,
                     "stderr": stderr,
@@ -326,6 +333,13 @@ class FunctionTools:
                     "returncode": process.returncode,
                     "error": f"Command failed with return code {process.returncode}"
                 }
+                
+                # Print error for visibility
+                if stderr:
+                    print(f"\n{Colors.RED}Error output:{Colors.ENDC}")
+                    print(stderr)
+                    
+                return result
                 
         except Exception as e:
             return {"status": "error", "error": f"Error executing bash command: {str(e)}"}            

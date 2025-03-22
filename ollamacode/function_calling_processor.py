@@ -33,21 +33,31 @@ class FunctionCallingProcessor:
         }
         ```
         """
-        # Match code blocks with 'tool' or 'function' language identifier
-        pattern = r"```(?:tool|function)\s*\n(.*?)```"
+        self.logger.info(f"Extracting function calls from response text")
+        
+        # Match code blocks with 'tool', 'function', or 'python' (followed by a JSON object)
+        pattern = r"```(?:tool|function|python)\s*\n({.*?})\s*```"
         matches = re.finditer(pattern, response_text, re.DOTALL)
         
         function_calls = []
         for match in matches:
             function_json = match.group(1).strip()
+            self.logger.info(f"Found potential function call: {function_json[:100]}...")
             try:
                 function_data = json.loads(function_json)
-                # Add the raw text for tool execution
-                function_data["_raw"] = match.group(0)
-                function_calls.append(function_data)
-            except json.JSONDecodeError:
-                self.logger.warning(f"Failed to parse function call: {function_json}")
+                # Check if this is a valid function call with 'tool' and 'params'
+                if "tool" in function_data and "params" in function_data:
+                    # Add the raw text for tool execution
+                    function_data["_raw"] = match.group(0)
+                    function_calls.append(function_data)
+                    self.logger.info(f"Valid function call extracted for tool: {function_data['tool']}")
+                else:
+                    self.logger.warning(f"JSON object missing 'tool' or 'params' keys: {function_json[:100]}...")
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"Failed to parse function call: {function_json[:100]}... Error: {str(e)}")
                 continue
+                
+        self.logger.info(f"Extracted {len(function_calls)} function calls from response")
                 
         return function_calls
     
@@ -116,12 +126,26 @@ class FunctionCallingProcessor:
             # Execute the tool
             result = tool_methods[tool_name](params)
             
+            # Store the original params in the result for context (for followups)
+            result["_params"] = params
+            result["_tool"] = tool_name
+            
             # Display execution result
             if result.get("status") == "success":
                 print(f"{Colors.GREEN}Tool executed successfully{Colors.ENDC}")
-                self._display_result_preview(result)
+                
+                # For python_run, always display the stdout
+                if tool_name == "python_run" and "stdout" in result:
+                    print(f"\n{Colors.CYAN}Output:{Colors.ENDC}")
+                    print(result["stdout"])
+                else:
+                    self._display_result_preview(result)
             else:
                 print(f"{Colors.RED}Tool execution failed:{Colors.ENDC} {result.get('error', 'Unknown error')}")
+                # For python_run, display stderr on failure
+                if tool_name == "python_run" and "stderr" in result:
+                    print(f"\n{Colors.RED}Error output:{Colors.ENDC}")
+                    print(result["stderr"])
                 
             return result
         except Exception as e:
@@ -379,9 +403,15 @@ class FunctionCallingProcessor:
             output += "Python script executed successfully.\n\n"
             
             if result.get("stdout"):
-                output += f"```\n{result['stdout']}\n```\n\n"
+                # Format as a block for clarity
+                output += f"Output:\n```\n{result['stdout']}\n```\n\n"
             else:
                 output += "Script produced no output.\n\n"
+                
+            # Add the original code if available in params
+            if "code" in result.get("_params", {}) and result.get("_params", {}).get("code"):
+                output += f"Code that was executed:\n```python\n{result['_params']['code']}\n```\n\n"
+                
         else:
             output += f"Script execution failed with error code: {result.get('returncode', 'unknown')}\n\n"
             
@@ -389,6 +419,10 @@ class FunctionCallingProcessor:
                 output += f"Error output:\n```\n{result['stderr']}\n```\n\n"
                 
             if result.get("stdout"):
-                output += f"Standard output:\n```\n{result['stdout']}\n```\n\n"
+                output += f"Standard output before error:\n```\n{result['stdout']}\n```\n\n"
+                
+            # Add the original code that caused the error
+            if "code" in result.get("_params", {}) and result.get("_params", {}).get("code"):
+                output += f"Code that failed:\n```python\n{result['_params']['code']}\n```\n\n"
                 
         return output
